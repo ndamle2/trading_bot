@@ -1,0 +1,25 @@
+# secrets
+.env
+*.key
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# regenerable data and caches (rebuild with the analysis / backtest scripts)
+analysis/cache/
+analysis/out/*.pkl
+backtest/out/*.pkl
+*.tmp
+
+# bot runtime state and logs
+bot/state/
+bot/logs/
+
+# competition research data (download hurricane-season-research.zip from the case site)
+hurricane-season-research/
+
+# os / editor
+.DS_Store
+.vscode/

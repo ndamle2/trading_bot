@@ -1,0 +1,21 @@
+== choosing min_edge on training seasons, averaged over: base: rivals 4 s slower, 30%, rivals 2 s slower, 50%, rivals as fast, 50%
+  min_edge 0.0005    2565    1510     554   average   1543
+  min_edge 0.001     2718    1568     601   average   1629
+  min_edge 0.002     2859    1645     677   average   1727
+  min_edge 0.004     2994    1678     734   average   1802
+chosen min_edge 0.004
+
+== budget sensitivity (training)
+  25 actions/min: mean    2722
+  45 actions/min: mean    2994
+  70 actions/min: mean    3281
+
+== HOLDOUT seasons 1-200
+                    scenario   mean  median     p5     min  ARCH $  REBLD $  ARCH arbs  REBLD arbs  ARCH units  REBLD units
+                   no rivals 4132.0  3772.0 1665.0   330.0  3078.0   1055.0       51.0        20.0      1185.0        776.0
+base: rivals 4 s slower, 30% 2864.0  2519.0 1049.0  -118.0  2149.0    715.0       40.0        15.0       835.0        512.0
+      rivals 2 s slower, 50% 1539.0  1397.0  481.0  -115.0  1159.0    381.0       31.0        10.0       520.0        290.0
+         rivals as fast, 50%  666.0   594.0  153.0  -337.0   546.0    121.0       29.0         8.0       400.0        159.0
+  base + 30% of gap is noise 1457.0  1269.0  442.0    15.0  1143.0    314.0       29.0         9.0       548.0        273.0
+          base + latency 4 s  615.0   477.0 -719.0 -1896.0   362.0    253.0       40.0        15.0       835.0        512.0
+wrote /Users/neildamle/Desktop/trading_comp/backtest/out/etf_arb_params.json

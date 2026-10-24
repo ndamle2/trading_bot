@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OIL / PLANE Options Sheet</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e2de;
+  --buy: #0a7d3b; --buy-bg: #e3f4ea; --sell: #b3261e; --sell-bg: #fbe7e5; --accent: #2457c5; --warn: #9a6200;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151517; --panel: #1f1f22; --ink: #ececef; --muted: #9a9aa2; --line: #34343a;
+    --buy: #5cd08a; --buy-bg: #163524; --sell: #ff8a80; --sell-bg: #3d1b19; --accent: #8fb0ff; --warn: #f0b75a;
+    color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 -apple-system, system-ui, "Segoe UI", sans-serif; }
+.wrap { padding: 12px 16px 40px; max-width: 1600px; margin: 0 auto; }
+h1 { font-size: 17px; margin: 0 0 8px; }
+h2 { font-size: 14px; margin: 0 0 8px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; }
+.row > .panel { flex: 1 1 640px; min-width: 0; }
+label { color: var(--muted); font-size: 12px; display: inline-flex; flex-direction: column; gap: 2px; }
+input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; width: 76px; }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.settings { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.phase { display: flex; gap: 6px; flex-wrap: wrap; }
+.phase button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+.phase button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 3px 5px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.l, th.l { text-align: left; }
+td input { width: 64px; }
+tr.top td { font-weight: 600; }
+.BUY { color: var(--buy); background: var(--buy-bg); font-weight: 700; }
+.SELL { color: var(--sell); background: var(--sell-bg); font-weight: 700; }
+.muted { color: var(--muted); }
+.warn { color: var(--warn); }
+.kpi { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; }
+.kpi div { display: flex; flex-direction: column; }
+.kpi b { font-size: 15px; }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+button.small { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+.state { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>OIL / PLANE options sheet <span class="muted" style="font-weight:400">— Black-Scholes, r = 0, European</span></h1>
+
+<div class="panel">
+  <div class="settings">
+    <label>Days to expiry<input id="days" type="number" step="1" value="20"></label>
+    <label>Days / year<input id="basis" type="number" step="1" value="252"></label>
+    <label>Extra edge paid ($/contract)<input id="slip" type="number" step="0.01" value="0.05"></label>
+    <label>Min edge to trade ($)<input id="minEdge" type="number" step="0.01" value="0.05"></label>
+    <label>Max size<input id="maxSize" type="number" step="10" value="300"></label>
+    <label>Assumed half-spread if no quote ($)<input id="halfSpread" type="number" step="0.01" value="0.05"></label>
+    <div>
+      <div class="muted" style="font-size:12px;margin-bottom:2px">Where are the bots? (bot quote estimate)</div>
+      <div class="phase" id="phase">
+        <button data-p="A">A · news out: old price, old IV</button>
+        <button data-p="B">B · price moved: new price, old IV</button>
+        <button data-p="C">C · snapped: new price, new IV</button>
+      </div>
+    </div>
+    <button class="small" id="nextEvent" title="Copy New price/IV into Old for both underlyings, clear quotes">Next event → new becomes old</button>
+    <button class="small" id="resetAll" title="Clear everything">Reset sheet</button>
+  </div>
+  <p class="hint">Fair = BS(new price, new IV). Bot quote estimate: phase A = BS(old, old IV), B = BS(new price, old IV).
+    Typed bid/ask always win over the estimate. Edge = fair − ask − extra (buy) or bid − fair − extra (sell).
+    <b>Limit</b> = the worst price still worth it: fair ∓ (min edge + extra).</p>
+</div>
+
+<div class="row" id="unds"></div>
+
+<div class="row">
+  <div class="panel">
+    <h2>Rounds 2–3 · analyst tracker</h2>
+    <div class="settings" style="margin-bottom:8px">
+      <label>Decay per event<input id="decay" type="number" step="0.05" value="0.6"></label>
+      <label>Error floor (vol pts)<input id="floor" type="number" step="0.25" value="1"></label>
+      <label>Bias-correct<select id="biasCorr"><option value="0">no</option><option value="1">yes</option></select></label>
+      <label>Pool both underlyings<select id="pool"><option value="1">yes</option><option value="0">no</option></select></label>
+      <label style="min-width:260px">Round 3 converter<select id="conv" style="width:260px"></select></label>
+    </div>
+    <div class="scroll"><table id="trk"></table></div>
+    <p class="hint">Enter the three analysts' numbers when the event is released; after the snap (+2 min), get the true IV from the
+      IV calculator (or the solver below) and enter it in <b>True IV%</b>. Weights ∝ 1/(rmse² + floor²), recent events weigh more.
+      Round 3 rows (events 7–10) pass the analysts' quantity through the converter first; enter the price S for $-based quantities.</p>
+    <div id="trkStats"></div>
+  </div>
+  <div class="panel" style="flex:0 1 520px">
+    <h2>Round 3 · converter check</h2>
+    <div class="state">
+      <label>Quantity<input id="cq" type="number" step="any"></label>
+      <label>Price S<input id="cS" type="number" step="any"></label>
+    </div>
+    <div class="scroll"><table id="convTbl"></table></div>
+    <p class="hint">What IV each interpretation would mean. Once a round-3 event has a True IV in the tracker, the fit ranking below
+      shows which interpretation matches (mean abs error in vol points).</p>
+    <div class="scroll"><table id="fitTbl"></table></div>
+    <h2 style="margin-top:12px">IV solver</h2>
+    <div class="state">
+      <label>Type<select id="ivT" style="width:60px"><option>C</option><option>P</option></select></label>
+      <label>S<input id="ivS" type="number" step="any"></label>
+      <label>K<input id="ivK" type="number" step="any"></label>
+      <label>Option price<input id="ivP" type="number" step="any"></label>
+      <div><div class="muted" style="font-size:12px">IV</div><b id="ivOut">—</b></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Playbook (first guess — adjust to the actual headline)</h2>
+  <div class="scroll"><table>
+    <tr><th class="l">Headline type</th><th>OIL price</th><th>OIL IV</th><th>PLANE price</th><th>PLANE IV</th><th class="l">Note</th></tr>
+    <tr><td class="l">Oil supply disruption (protest, sabotage, factory shut)</td><td>↑</td><td>↑</td><td>↓</td><td>↑</td><td class="l">fuel cost channel</td></tr>
+    <tr><td class="l">Tariff raised / trade threat</td><td>?</td><td>↑</td><td>↓</td><td>↑</td><td class="l">Oiler surprises → uncertainty up</td></tr>
+    <tr><td class="l">Tariff cut / trade deal / de-escalation</td><td>↓</td><td>↓</td><td>↑</td><td>↓</td><td class="l"></td></tr>
+    <tr><td class="l">Crash cause confirmed: NewAir at fault</td><td></td><td></td><td>↓</td><td>↓</td><td class="l">bad news but resolves uncertainty</td></tr>
+    <tr><td class="l">Crash cleared (not NewAir's fault)</td><td></td><td></td><td>↑</td><td>↓</td><td class="l"></td></tr>
+    <tr><td class="l">Investigation delayed / new safety rumours</td><td></td><td></td><td>↓</td><td>↑</td><td class="l"></td></tr>
+    <tr><td class="l">Scheduled resolution (vote, ruling) announced for later</td><td></td><td>↑</td><td></td><td>↑</td><td class="l">vol up before the event</td></tr>
+  </table></div>
+  <p class="hint">Edge stacks when price and IV effects point the same way for a contract (e.g. price ↑ and IV ↑ → calls).
+    Price moves matter most for in-the-money options (|Δ| near 1); IV moves matter most in dollars for at-the-money options (largest vega)
+    and most in percent for out-of-the-money options.</p>
+</div>
+</div>
+
+<script src="options_math.js"></script>
+<script>
+(() => {
+"use strict";
+const UNDS = ["OIL", "PLANE"];
+const TYPES = ["C", "C", "C", "P", "P", "P"];
+const KEY = "options-sheet-v1";
+const $ = (id) => document.getElementById(id);
+const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
+const fmt = (x, d = 2) => (isFinite(x) ? x.toFixed(d) : "—");
+
+// ------------------------------------------------------------ state
+function blank() {
+  const s = { phase: "A", und: {}, trk: [], settings: {} };
+  for (const u of UNDS) {
+    s.und[u] = { oldS: "", oldIV: "", newS: "", newIV: "", K: ["", "", ""],
+      rows: TYPES.map(() => ({ bid: "", ask: "", pos: "", avg: "" })) };
+  }
+  for (let e = 4; e <= 10; e++) for (const u of UNDS) s.trk.push({ e, u, S: "", a: ["", "", ""], truth: "" });
+  return s;
+}
+let S;
+try { S = JSON.parse(localStorage.getItem(KEY)) || blank(); } catch (e) { S = blank(); }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const SETTINGS = ["days", "basis", "slip", "minEdge", "maxSize", "halfSpread", "decay", "floor", "biasCorr", "pool", "conv",
+                  "cq", "cS", "ivT", "ivS", "ivK", "ivP"];
+const set = (k) => num($(k).value);
+const T = () => set("days") / set("basis");
+
+// ------------------------------------------------------------ build underlying panels
+function bind(el, get, put) {
+  el.value = get();
+  el.addEventListener("input", () => { put(el.value); save(); recompute(); });
+}
+function buildUnd(u) {
+  const st = S.und[u];
+  const p = document.createElement("div");
+  p.className = "panel";
+  p.innerHTML = `<h2>${u}</h2>
+    <div class="state">
+      <label>Old price<input data-f="oldS" type="number" step="any"></label>
+      <label>Old IV %<input data-f="oldIV" type="number" step="any"></label>
+      <label>New price<input data-f="newS" type="number" step="any"></label>
+      <label>New IV %<input data-f="newIV" type="number" step="any"></label>
+      <label>K1<input data-k="0" type="number" step="any"></label>
+      <label>K2<input data-k="1" type="number" step="any"></label>
+      <label>K3<input data-k="2" type="number" step="any"></label>
+      <button class="small" data-act="blend">use analyst blend as New IV</button>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th class="l">Contract</th><th>Bid</th><th>Ask</th><th>Bot est</th><th>Fair</th><th>Edge</th>
+        <th class="l">Action</th><th>Limit</th><th>Size</th><th>$ at size</th><th>Δ</th><th>Vega/pt</th>
+        <th>Pos</th><th>Avg px</th><th>PnL@fair</th></tr></thead>
+      <tbody></tbody></table></div>
+    <div class="kpi" data-kpi></div>
+    <p class="hint" data-hedge></p>`;
+  for (const f of ["oldS", "oldIV", "newS", "newIV"]) bind(p.querySelector(`[data-f=${f}]`), () => st[f], (v) => (st[f] = v));
+  p.querySelectorAll("[data-k]").forEach((el) => bind(el, () => st.K[+el.dataset.k], (v) => (st.K[+el.dataset.k] = v)));
+  const tb = p.querySelector("tbody");
+  TYPES.forEach((t, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="l" data-o="name"></td><td><input data-r="bid"></td><td><input data-r="ask"></td>
+      <td data-o="bot"></td><td data-o="fair"></td><td data-o="edge"></td><td class="l" data-o="act"></td>
+      <td data-o="lim"></td><td data-o="size"></td><td data-o="usd"></td><td data-o="delta"></td><td data-o="vega"></td>
+      <td><input data-r="pos"></td><td><input data-r="avg"></td><td data-o="pnl"></td>`;
+    tr.querySelectorAll("[data-r]").forEach((el) => {
+      el.type = "number"; el.step = "any";
+      bind(el, () => st.rows[i][el.dataset.r], (v) => (st.rows[i][el.dataset.r] = v));
+    });
+    tb.appendChild(tr);
+  });
+  p.querySelector("[data-act=blend]").addEventListener("click", () => {
+    const b = currentBlend(u);
+    if (isFinite(b)) { st.newIV = b.toFixed(2); p.querySelector("[data-f=newIV]").value = st.newIV; save(); recompute(); }
+  });
+  $("unds").appendChild(p);
+  return p;
+}
+const panels = {};
+
+// ------------------------------------------------------------ compute underlying
+function computeUnd(u) {
+  const st = S.und[u], p = panels[u], t = T();
+  const oldS = num(st.oldS), newS = num(st.newS), oldV = num(st.oldIV) / 100, newV = num(st.newIV) / 100;
+  const slip = set("slip"), minE = set("minEdge"), maxSize = set("maxSize"), hs = set("halfSpread");
+  const botS = S.phase === "A" ? oldS : newS, botV = S.phase === "C" ? newV : oldV;
+  const rows = p.querySelectorAll("tbody tr");
+  const out = [];
+  let netD = 0, netV = 0, pnl = 0;
+  TYPES.forEach((type, i) => {
+    const K = num(st.K[i % 3]);
+    const r = st.rows[i], tr = rows[i];
+    const g = OM.bs(type, newS, K, newV, t);
+    const bot = OM.bs(type, botS, K, botV, t).price;
+    let bid = num(r.bid), ask = num(r.ask);
+    const est = !isFinite(bid) && !isFinite(ask);
+    if (!isFinite(bid)) bid = bot - hs;
+    if (!isFinite(ask)) ask = bot + hs;
+    const buyE = g.price - ask - slip, sellE = bid - g.price - slip;
+    const pos = num(r.pos) || 0, avg = num(r.avg);
+    let act = "", edge = Math.max(buyE, sellE), size = 0, lim = NaN;
+    if (buyE > minE && buyE >= sellE) { act = "BUY"; size = Math.max(0, maxSize - pos); lim = g.price - minE - slip; }
+    else if (sellE > minE) { act = "SELL"; size = Math.max(0, maxSize + pos); lim = g.price + minE + slip; }
+    if (!size) act = act ? act + " (full)" : "";
+    const usd = act ? edge * size : 0;
+    netD += pos * g.delta; netV += pos * g.vega;
+    if (pos && isFinite(avg)) pnl += pos * (g.price - avg);
+    const o = (k) => tr.querySelector(`[data-o=${k}]`);
+    o("name").textContent = `${type} ${isFinite(K) ? K : "?"}`;
+    o("bot").innerHTML = `${fmt(bot)}${est ? "" : ' <span class="muted">(typed)</span>'}`;
+    o("fair").textContent = fmt(g.price);
+    o("edge").textContent = fmt(edge);
+    o("act").textContent = act || "—";
+    o("act").className = "l " + (act.startsWith("BUY") ? "BUY" : act.startsWith("SELL") ? "SELL" : "muted");
+    o("lim").textContent = act ? fmt(lim) : "";
+    o("size").textContent = act ? size : "";
+    o("usd").textContent = act ? fmt(usd, 0) : "";
+    o("delta").textContent = fmt(g.delta, 3);
+    o("vega").textContent = fmt(g.vega, 3);
+    o("pnl").textContent = pos && isFinite(avg) ? fmt(pos * (g.price - avg), 0) : "";
+    out.push({ tr, usd });
+  });
+  // highlight the three best trades
+  out.slice().sort((a, b) => b.usd - a.usd).forEach((x, k) => x.tr.classList.toggle("top", k < 3 && x.usd > 0));
+  const total = out.reduce((a, b) => a + b.usd, 0);
+  p.querySelector("[data-kpi]").innerHTML = `
+    <div><span class="muted">Edge on the table</span><b>$${fmt(total, 0)}</b></div>
+    <div><span class="muted">Net Δ (underlying units)</span><b>${fmt(netD, 1)}</b></div>
+    <div><span class="muted">Net vega ($/vol pt)</span><b>${fmt(netV, 1)}</b></div>
+    <div><span class="muted">PnL at fair</span><b>$${fmt(pnl, 0)}</b></div>
+    <div><span class="muted">Move ΔS / ΔIV</span><b>${fmt(newS - oldS)} / ${fmt((newV - oldV) * 100)} pts</b></div>`;
+  // delta hedge with a synthetic forward at the strike nearest the price
+  const Ks = st.K.map(num).filter(isFinite);
+  let hedge = "";
+  if (Ks.length && Math.abs(netD) >= 1 && isFinite(newS)) {
+    const k = Ks.reduce((a, b) => (Math.abs(b - newS) < Math.abs(a - newS) ? b : a));
+    const n = Math.round(Math.abs(netD));
+    hedge = netD > 0
+      ? `Delta hedge: <b>sell ${n} C ${k} + buy ${n} P ${k}</b> (synthetic short, Δ −1 each, ~vega neutral).`
+      : `Delta hedge: <b>buy ${n} C ${k} + sell ${n} P ${k}</b> (synthetic long, Δ +1 each, ~vega neutral).`;
+  }
+  p.querySelector("[data-hedge]").innerHTML = hedge;
+}
+
+// ------------------------------------------------------------ analyst tracker
+function convFn() {
+  const v = $("conv").value;
+  if (v === "auto") {
+    const best = fitRanking()[0];
+    return best ? { f: OM.CONVERTERS[best.name], scale: best.scale, label: `${best.name}${best.scale !== 1 ? " ÷100" : ""}` }
+                : { f: OM.CONVERTERS["IV itself"], scale: 0.01, label: "IV itself (no fit yet)" };
+  }
+  const [name, scale] = v.split("|");
+  return { f: OM.CONVERTERS[name], scale: Number(scale), label: name };
+}
+function fitRanking() {
+  const rows = S.trk.filter((r) => r.e >= 7).map((r) => ({ q: r.a.map(num), S: num(r.S), truth: num(r.truth) / 100 }));
+  return OM.fitConverters(rows.filter((r) => isFinite(r.truth)), T());
+}
+// analysts' estimates as IV % for a tracker row (round 3 rows go through the converter)
+function rowIV(r) {
+  if (r.e < 7) return r.a.map(num);
+  const c = convFn();
+  return r.a.map((q) => 100 * c.f(num(q) * c.scale, num(r.S), T()));
+}
+function stats(u) {
+  const pool = $("pool").value === "1";
+  const hist = S.trk.filter((r) => (pool || r.u === u) && isFinite(num(r.truth)))
+    .sort((a, b) => a.e - b.e).map((r) => ({ est: rowIV(r), truth: num(r.truth) }));
+  return OM.analystStats(hist, set("decay"), set("floor"));
+}
+function latestRow(u) {
+  const open = S.trk.filter((r) => r.u === u && !isFinite(num(r.truth)) && r.a.some((x) => x !== ""));
+  return open.length ? open[open.length - 1] : null;
+}
+function currentBlend(u) {
+  const r = latestRow(u);
+  if (!r) return NaN;
+  return OM.blendEstimates(rowIV(r), stats(u), $("biasCorr").value === "1").blend;
+}
+function buildTracker() {
+  const t = $("trk");
+  t.innerHTML = `<thead><tr><th class="l">Event</th><th class="l">Und</th><th>S (R3)</th><th>A1</th><th>A2</th><th>A3</th>
+    <th>→ A1 IV%</th><th>→ A2 IV%</th><th>→ A3 IV%</th><th>Blend IV%</th><th>True IV%</th></tr></thead><tbody></tbody>`;
+  const tb = t.querySelector("tbody");
+  S.trk.forEach((r) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="l">${r.e} <span class="muted">R${r.e <= 6 ? 2 : 3}</span></td><td class="l">${r.u}</td>
+      <td>${r.e >= 7 ? '<input data-t="S">' : ""}</td><td><input data-a="0"></td><td><input data-a="1"></td><td><input data-a="2"></td>
+      <td data-c="0"></td><td data-c="1"></td><td data-c="2"></td><td data-c="b"></td><td><input data-t="truth"></td>`;
+    tr.querySelectorAll("input").forEach((el) => {
+      el.type = "number"; el.step = "any";
+      if (el.dataset.a !== undefined) bind(el, () => r.a[+el.dataset.a], (v) => (r.a[+el.dataset.a] = v));
+      else bind(el, () => r[el.dataset.t], (v) => (r[el.dataset.t] = v));
+    });
+    r._tr = tr;
+    tb.appendChild(tr);
+  });
+}
+function computeTracker() {
+  for (const r of S.trk) {
+    const iv = rowIV(r);
+    iv.forEach((v, i) => (r._tr.querySelector(`[data-c="${i}"]`).textContent = r.a[i] === "" ? "" : fmt(v)));
+    const isOpen = latestRow(r.u) === r;
+    r._tr.querySelector('[data-c="b"]').innerHTML = isOpen ? `<b>${fmt(currentBlend(r.u))}</b>` : "";
+  }
+  let html = "";
+  for (const u of $("pool").value === "1" ? ["both"] : UNDS) {
+    const s = stats(u === "both" ? "OIL" : u);
+    html += `<table style="margin-top:6px"><tr><th class="l">${u === "both" ? "All events" : u} (${s.events} scored)</th>
+      <th>A1</th><th>A2</th><th>A3</th></tr>
+      <tr><td class="l">RMSE (vol pts)</td>${s.rmse.map((x) => `<td>${fmt(x)}</td>`).join("")}</tr>
+      <tr><td class="l">Bias (est − true)</td>${s.bias.map((x) => `<td>${fmt(x)}</td>`).join("")}</tr>
+      <tr><td class="l">Weight</td>${s.weights.map((x) => `<td><b>${fmt(x * 100, 0)}%</b></td>`).join("")}</tr></table>`;
+  }
+  for (const u of UNDS) {
+    const r = latestRow(u);
+    if (!r) continue;
+    const b = OM.blendEstimates(rowIV(r), stats(u), $("biasCorr").value === "1");
+    html += `<p class="hint">${u} event ${r.e}: blend <b>${fmt(b.blend)}%</b>, simple mean ${fmt(b.mean)}%,
+      analysts' spread ${fmt(b.spread)} pts${b.spread > 5 ? ' <span class="warn">— wide disagreement: size down</span>' : ""}.</p>`;
+  }
+  if ($("conv").value === "auto") html += `<p class="hint">Round 3 converter in use: <b>${convFn().label}</b></p>`;
+  $("trkStats").innerHTML = html;
+}
+
+// ------------------------------------------------------------ converter + IV solver
+function computeConv() {
+  const q = set("cq"), s = set("cS"), t = T();
+  let h = `<tr><th class="l">If the quantity is…</th><th>IV% as given</th><th>IV% if ÷100</th></tr>`;
+  for (const [name, f] of Object.entries(OM.CONVERTERS)) {
+    h += `<tr><td class="l">${name}</td><td>${fmt(100 * f(q, s, t))}</td><td>${fmt(100 * f(q / 100, s, t))}</td></tr>`;
+  }
+  $("convTbl").innerHTML = h;
+  const fit = fitRanking();
+  $("fitTbl").innerHTML = fit.length
+    ? `<tr><th class="l">Best fit so far</th><th>Scale</th><th>MAE (pts)</th><th>n</th></tr>` +
+      fit.slice(0, 4).map((c, k) => `<tr${k === 0 ? ' class="top"' : ""}><td class="l">${c.name}</td><td>${c.scale === 1 ? "as given" : "÷100"}</td>
+        <td>${fmt(c.mae)}</td><td>${c.n}</td></tr>`).join("")
+    : `<tr><td class="l muted">No round-3 event with a True IV yet.</td></tr>`;
+  const iv = OM.impliedVol($("ivT").value, set("ivS"), set("ivK"), set("ivP"), t);
+  $("ivOut").textContent = isFinite(iv) ? (100 * iv).toFixed(2) + "%" : "—";
+}
+
+function recompute() {
+  UNDS.forEach(computeUnd);
+  computeTracker();
+  computeConv();
+  document.querySelectorAll("#phase button").forEach((b) => b.classList.toggle("on", b.dataset.p === S.phase));
+}
+
+// ------------------------------------------------------------ wiring
+const convSel = $("conv");
+convSel.innerHTML = `<option value="auto">auto: best fit so far</option>` + Object.keys(OM.CONVERTERS)
+  .flatMap((n) => [`<option value="${n}|1">${n}</option>`, `<option value="${n}|0.01">${n} (÷100)</option>`]).join("");
+for (const k of SETTINGS) {
+  const el = $(k);
+  if (S.settings[k] !== undefined) el.value = S.settings[k];
+  el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => { S.settings[k] = el.value; save(); recompute(); });
+}
+document.querySelectorAll("#phase button").forEach((b) =>
+  b.addEventListener("click", () => { S.phase = b.dataset.p; save(); recompute(); }));
+$("nextEvent").addEventListener("click", () => {
+  for (const u of UNDS) {
+    const st = S.und[u];
+    if (st.newS !== "") st.oldS = st.newS;
+    if (st.newIV !== "") st.oldIV = st.newIV;
+    st.rows.forEach((r) => { r.bid = ""; r.ask = ""; });
+    panels[u].querySelectorAll("[data-f], [data-r=bid], [data-r=ask]").forEach((el) => {
+      el.value = el.dataset.f ? st[el.dataset.f] : "";
+    });
+  }
+  S.phase = "A"; save(); recompute();
+});
+$("resetAll").addEventListener("click", () => {
+  if ($("resetAll").dataset.armed) { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); return; }
+  $("resetAll").dataset.armed = "1"; $("resetAll").textContent = "Click again to clear everything";
+  setTimeout(() => { delete $("resetAll").dataset.armed; $("resetAll").textContent = "Reset sheet"; }, 3000);
+});
+for (const u of UNDS) panels[u] = buildUnd(u);
+buildTracker();
+recompute();
+})();
+</script>
+</body>
+</html>

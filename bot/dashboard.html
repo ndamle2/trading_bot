@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hurricane Bot Monitor</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f4f4f2; --surface-1: #fcfcfb; --line: #e3e2de; --grid: #ecebe7;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #85847f;
+  --series-1: #2a78d6; --series-2: #eb6834;
+  --long: #2a78d6; --short: #e34948; --neutral: #f0efec;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-text: #006300; --bad-text: #b3261e;
+  --island: #e9e6dc; --island-line: #cfcabb; --sea: #f1f5f9; --storm: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #111110; --surface-1: #1a1a19; --line: #2f2f2c; --grid: #262624;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-2: #d95926; --long: #3987e5; --short: #e66767; --neutral: #383835;
+    --good-text: #5cd08a; --bad-text: #ff8a80;
+    --island: #2b2a26; --island-line: #45433c; --sea: #161a1f; --storm: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #111110; --surface-1: #1a1a19; --line: #2f2f2c; --grid: #262624;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --series-1: #3987e5; --series-2: #d95926; --long: #3987e5; --short: #e66767; --neutral: #383835;
+  --good-text: #5cd08a; --bad-text: #ff8a80;
+  --island: #2b2a26; --island-line: #45433c; --sea: #161a1f; --storm: #3987e5;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text-primary);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 14px 18px 40px; }
+.card { background: var(--surface-1); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--text-secondary); }
+.top { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 12px; }
+.top h1 { font-size: 16px; margin: 0; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  font-weight: 600; border: 1px solid var(--line); background: var(--surface-1); }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--text-secondary); }
+.meta b { color: var(--text-primary); font-weight: 600; }
+.grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.tile .label { color: var(--text-secondary); font-size: 12px; }
+.tile .value { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.tile .sub { color: var(--text-muted); font-size: 12px; }
+.row2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 900px) { .row2 { grid-template-columns: 1fr; } }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 7px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+th { color: var(--text-secondary); font-weight: 500; font-size: 12px; }
+td.l, th.l { text-align: left; }
+.neg-text { color: var(--bad-text); } .pos-text { color: var(--good-text); }
+.muted { color: var(--text-muted); }
+.posbar { display: inline-block; width: 120px; height: 10px; background: var(--neutral); border-radius: 3px;
+  position: relative; vertical-align: middle; margin-right: 8px; }
+.posbar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.posbar::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text-muted); }
+input, select, button { font: inherit; color: var(--text-primary); }
+input[type=number] { width: 64px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--page); }
+button { border: 1px solid var(--line); background: var(--page); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+button.halt { border-color: var(--critical); color: var(--critical); font-weight: 650; }
+button.halt.on { background: var(--critical); color: #fff; }
+button.save { border-color: var(--series-1); color: var(--series-1); font-weight: 600; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.log { font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; max-height: 300px;
+  color: var(--text-secondary); }
+.chart-wrap { position: relative; }
+.tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); white-space: nowrap; }
+.legend { display: flex; gap: 14px; color: var(--text-secondary); font-size: 12px; margin-bottom: 4px; }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 5px; background: var(--c); }
+.note { color: var(--text-muted); font-size: 12px; margin: 6px 0 0; }
+.banner { display: none; margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--critical);
+  color: var(--text-primary); background: var(--surface-1); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Hurricane bot</h1>
+    <span class="pill" id="statePill"><span class="dot"></span><span>connecting…</span></span>
+    <div class="meta" id="meta"></div>
+  </div>
+  <div class="banner" id="banner"></div>
+
+  <div class="grid4">
+    <div class="card tile"><div class="label">Expected PnL at settlement</div><div class="value" id="kExp">—</div>
+      <div class="sub">realized + position × (fair value − avg price)</div></div>
+    <div class="card tile"><div class="label">Exchange marked PnL</div><div class="value" id="kMtm">—</div>
+      <div class="sub">realized + unrealized at the exchange's marks (not the score)</div></div>
+    <div class="card tile"><div class="label">Gross exposure</div><div class="value" id="kGross">—</div>
+      <div class="sub" id="kGrossSub"></div></div>
+    <div class="card tile"><div class="label">Insured losses this season</div><div class="value" id="kLoss">—</div>
+      <div class="sub" id="kLossSub"></div></div>
+  </div>
+
+  <div class="row2">
+    <div class="card">
+      <h2>PnL this season</h2>
+      <div class="legend"><span style="--c:var(--series-1)">Expected at settlement</span><span style="--c:var(--series-2)">Exchange marked</span></div>
+      <div class="chart-wrap" id="chartWrap"><svg id="chart" width="100%" height="260" role="img" aria-label="PnL over time"></svg>
+        <div class="tip" id="tip" hidden></div></div>
+      <p class="note" id="chartNote"></p>
+    </div>
+    <div class="card">
+      <h2 id="stormTitle">Storm</h2>
+      <svg id="map" viewBox="0 0 1000 700" width="100%" role="img" aria-label="Storm map"></svg>
+      <p class="note" id="stormNote"></p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:12px">
+    <h2>Positions and fair values</h2>
+    <div class="scroll"><table id="posTbl">
+      <thead><tr><th class="l">Symbol</th><th class="l">Position (− short · long +)</th><th>Avg px</th><th>Bid</th><th>Ask</th>
+        <th>Fair</th><th>± sd</th><th title="shrunk value minus mid: what the bot trades on">Edge vs mid</th><th>Exp. PnL</th><th>Marked PnL</th>
+        <th>Trade</th><th title="fair value × mult + add (ETFs follow their basket)">Fair ×</th><th>Fair +</th></tr></thead>
+      <tbody></tbody></table></div>
+    <div class="controls" style="margin-top:10px">
+      <button class="halt" id="haltBtn">HALT trading</button>
+      <label>Scale <input type="number" id="scale" min="0" max="1" step="0.05" value="1"></label>
+      <label><input type="checkbox" id="arbOn" checked> ETF arb bot on</label>
+      <button class="save" id="saveBtn">Save overrides</button>
+      <span class="muted" id="ovMsg">Overrides are read by the bot every cycle (bot/overrides.json).</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:12px" id="arbCard">
+    <h2>ETF arbitrage bot <span class="pill" id="arbPill" style="margin-left:8px"><span class="dot"></span><span>—</span></span></h2>
+    <div class="grid4" style="margin-bottom:8px">
+      <div class="tile"><div class="label">Estimated arbitrage profit</div><div class="value" id="aProfit">—</div><div class="sub" id="aProfitSub"></div></div>
+      <div class="tile"><div class="label">ARCH gap now</div><div class="value" id="aGapARCH">—</div><div class="sub" id="aGapARCHsub"></div></div>
+      <div class="tile"><div class="label">REBLD gap now</div><div class="value" id="aGapREBLD">—</div><div class="sub" id="aGapREBLDsub"></div></div>
+      <div class="tile"><div class="label">Health</div><div class="value" id="aHealth" style="font-size:18px">—</div><div class="sub" id="aHealthSub"></div></div>
+    </div>
+    <div class="scroll" style="max-height:220px;overflow-y:auto"><table id="arbTbl">
+      <thead><tr><th class="l">Time</th><th class="l">ETF</th><th class="l">Direction</th><th>Units sized</th><th>Matched</th><th>Est. profit</th></tr></thead>
+      <tbody></tbody></table></div>
+    <p class="note">Gap = best per-unit edge at the top of the book (ETF bid − basket at asks, or basket at bids − ETF ask), after crossing every spread.
+      The bot trades when it beats its margin, then creates/redeems so it ends flat.</p>
+  </div>
+
+  <div class="row2">
+    <div class="card"><h2>Recent orders</h2><div class="scroll" style="max-height:300px;overflow-y:auto"><table id="ordTbl">
+      <thead><tr><th class="l">Time</th><th class="l">Side</th><th class="l">Symbol</th><th>Qty</th><th>Limit</th><th>Mid</th><th>Fair</th><th>Edge $</th></tr></thead>
+      <tbody></tbody></table></div></div>
+    <div class="card"><h2 id="logTitle">Log</h2><div class="log" id="log"></div></div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const theme = new URLSearchParams(location.search).get("theme");
+if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+const SYMS = ["PORT","ISLE","AQUA","GRID","FERRY","RECON","MAT","GEN","HAVEN","REIN","ARCH","REBLD"];
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const money = (x, d = 0) => (x == null || !isFinite(x)) ? "—" :
+  (x < 0 ? "−$" : "$") + Math.abs(x).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+const smoney = (x) => (x == null || !isFinite(x)) ? "—" : (x > 0 ? "+" : "") + money(x);
+const num = (x, d = 2) => (x == null || !isFinite(x)) ? "—" : x.toFixed(d);
+const cls = (x) => x > 0.5 ? "pos-text" : x < -0.5 ? "neg-text" : "";
+const ago = (x) => x == null ? "—" : x < 90 ? `${x.toFixed(1)} s` : x < 5400 ? `${Math.round(x / 60)} min` :
+  x < 172800 ? `${Math.round(x / 3600)} h` : `${Math.round(x / 86400)} days`;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let status = null, history = [], overrides = {halt: false, scale: 1, symbols: {}}, dirty = false, caseData = null;
+
+async function get(url) { const r = await fetch(url, {cache: "no-store"}); return r.json(); }
+
+// ------------------------------------------------------------------ header / state
+function stateOf(s) {
+  if (!s || s.missing) return ["critical", "✕", "No status yet", "Start the bot: ./run_bot.sh"];
+  if (s.age > 10) return ["critical", "✕", "Bot not updating", `last update ${ago(s.age)} ago — is it running?`];
+  if (s.net_down) return ["serious", "!", "Network down", "retrying; damage reports may be missed"];
+  if (s.halted) return ["critical", "■", "Halted", "overrides.json: halt = true"];
+  if (s.state !== "running") return ["warning", "⏸", "Market closed", s.state || ""];
+  if (s.trading) return ["good", "✓", s.dry_run ? "Trading (dry run)" : "Trading", ""];
+  return ["warning", "⚠", "Not trading", s.reason || ""];
+}
+function renderHeader(s) {
+  const [lvl, icon, label, detail] = stateOf(s);
+  $("statePill").innerHTML = `<span class="dot" style="background:var(--${lvl})"></span><span>${icon} ${esc(label)}</span>`;
+  const b = $("banner");
+  if (lvl === "critical" || lvl === "serious" || (lvl === "warning" && s && s.state === "running")) {
+    b.style.display = "block"; b.style.borderColor = `var(--${lvl})`;
+    b.textContent = `${icon} ${label}${detail ? " — " + detail : ""}`;
+  } else b.style.display = "none";
+  if (!s || s.missing) { $("meta").innerHTML = ""; return; }
+  const st = s.storm || {};
+  const phaseTxt = s.t == null ? "" : s.t < 60 ? "pre-storm" : s.t < 540 ? `storm age ${Math.round(s.t - 60)} s` :
+    s.t < 570 ? "dissipated" : s.t < 740 ? "after preliminary report" : "after final report";
+  const bud = s.budget || {};
+  $("meta").innerHTML = [
+    `Round <b>${s.round ?? "—"}</b> / 3`, phaseTxt && `<b>${phaseTxt}</b>`,
+    s.fictional_time && `clock <b>${s.fictional_time.replace("T", " ")}</b>`,
+    st.name && `storm <b>${esc(st.name)}</b>`,
+    `profile <b>${esc(s.profile)}</b>`, `scale <b>${num(s.scale, 2)}</b>`,
+    `actions left <b>${bud.left ?? "—"}/${bud.limit ?? "—"}</b>`,
+    s.cycle_ms != null && `cycle <b>${Math.round(s.cycle_ms)} ms</b>`,
+    `updated <b>${ago(s.age)}</b> ago`,
+  ].filter(Boolean).join("<span class=muted>·</span>");
+}
+
+// ------------------------------------------------------------------ tiles
+function renderTiles(s) {
+  if (!s || s.missing) return;
+  const T = s.totals || {};
+  $("kExp").textContent = smoney(T.exp_pnl); $("kExp").className = "value";
+  $("kMtm").textContent = smoney(T.mtm_pnl);
+  $("kGross").textContent = money(T.gross);
+  const n = SYMS.filter((k) => s.symbols[k] && s.symbols[k].pos).length;
+  const atLim = SYMS.filter((k) => s.symbols[k] && Math.abs(s.symbols[k].pos) >= s.symbols[k].limit).length;
+  $("kGrossSub").textContent = `${n} symbols held · ${atLim} at their limit`;
+  const st = s.storm || {};
+  const done = s.season_loss_done || 0;
+  const cur = st.final_loss ?? st.prelim_loss;
+  $("kLoss").textContent = "$" + Math.round(done + (st.final_loss == null && cur != null ? cur : 0)) + "M";
+  $("kLossSub").textContent = `completed rounds $${Math.round(done)}M` + (st.final_loss != null ? ` · round ${st.round} final $${Math.round(st.final_loss)}M`
+    : st.prelim_loss != null ? ` · round ${st.round} preliminary ≈$${Math.round(st.prelim_loss)}M` : "") +
+    " · HAVEN layer $400M–$1,300M, REIN above";
+}
+
+// ------------------------------------------------------------------ positions table
+function buildPosTable() {
+  const tb = $("posTbl").querySelector("tbody");
+  tb.innerHTML = SYMS.map((k) => `<tr data-s="${k}"><td class="l"><b>${k}</b></td><td class="l" data-c="pos"></td>
+    <td data-c="avg"></td><td data-c="bid"></td><td data-c="ask"></td><td data-c="fair"></td><td data-c="sd" class="muted"></td>
+    <td data-c="edge"></td><td data-c="exp"></td><td data-c="mtm"></td>
+    <td><label><input type="checkbox" data-o="on" checked> on</label></td>
+    <td><input type="number" step="0.01" data-o="mult" placeholder="1"></td>
+    <td><input type="number" step="0.1" data-o="add" placeholder="0"></td></tr>`).join("");
+  tb.querySelectorAll("input").forEach((el) => el.addEventListener("input", () => { dirty = true; $("ovMsg").textContent = "Unsaved changes."; }));
+}
+function renderPositions(s) {
+  if (!s || s.missing) return;
+  for (const k of SYMS) {
+    const r = s.symbols[k], tr = $("posTbl").querySelector(`tr[data-s="${k}"]`);
+    if (!r) continue;
+    const c = (n) => tr.querySelector(`[data-c="${n}"]`);
+    const f = Math.max(-1, Math.min(1, r.pos / r.limit));
+    const w = Math.abs(f) * 50, left = f >= 0 ? 50 : 50 - w;
+    c("pos").innerHTML = `<span class="posbar" title="${r.pos} of ±${r.limit}"><i style="left:${left}%;width:${w}%;background:var(${f >= 0 ? "--long" : "--short"})"></i></span>` +
+      `<b>${r.pos > 0 ? "+" : ""}${r.pos}</b> <span class="muted">/ ${r.limit}</span>`;
+    c("avg").textContent = r.pos ? num(r.avg) : "";
+    c("bid").textContent = num(r.bid); c("ask").textContent = num(r.ask);
+    c("fair").textContent = num(r.fair); c("sd").textContent = num(r.sd);
+    const edge = r.value != null && r.mid != null ? r.value - r.mid : null;
+    c("edge").innerHTML = edge == null ? "—" : `<span class="${edge > 0 ? "pos-text" : edge < 0 ? "neg-text" : ""}">${edge > 0 ? "▲" : edge < 0 ? "▼" : ""} ${num(Math.abs(edge))}</span>`;
+    c("exp").innerHTML = `<span class="${cls(r.exp_pnl)}">${smoney(r.exp_pnl)}</span>`;
+    c("mtm").innerHTML = `<span class="${cls(r.mtm_pnl)}">${smoney(r.mtm_pnl)}</span>`;
+  }
+}
+function loadOverridesIntoTable() {
+  $("scale").value = overrides.scale ?? 1;
+  $("arbOn").checked = !((overrides.arb || {}).halt);
+  $("haltBtn").classList.toggle("on", !!overrides.halt);
+  $("haltBtn").textContent = overrides.halt ? "RESUME trading" : "HALT trading";
+  for (const k of SYMS) {
+    const tr = $("posTbl").querySelector(`tr[data-s="${k}"]`), o = (overrides.symbols || {})[k] || {};
+    tr.querySelector('[data-o="on"]').checked = !o.disable;
+    tr.querySelector('[data-o="mult"]').value = o.mult ?? "";
+    tr.querySelector('[data-o="add"]').value = o.add ?? "";
+  }
+}
+function readOverridesFromTable() {
+  const o = {halt: !!overrides.halt, scale: Number($("scale").value || 1), symbols: {}, arb: {halt: !$("arbOn").checked}};
+  for (const k of SYMS) {
+    const tr = $("posTbl").querySelector(`tr[data-s="${k}"]`), e = {};
+    if (!tr.querySelector('[data-o="on"]').checked) e.disable = true;
+    const m = tr.querySelector('[data-o="mult"]').value, a = tr.querySelector('[data-o="add"]').value;
+    if (m !== "") e.mult = Number(m);
+    if (a !== "") e.add = Number(a);
+    if (Object.keys(e).length) o.symbols[k] = e;
+  }
+  return o;
+}
+async function saveOverrides(o) {
+  const r = await fetch("/api/overrides", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(o)});
+  const j = await r.json();
+  if (!r.ok) { $("ovMsg").textContent = "Not saved: " + j.error; return; }
+  overrides = j; dirty = false; loadOverridesIntoTable();
+  $("ovMsg").textContent = `Saved ${new Date().toLocaleTimeString()} — the bot applies it on its next cycle.`;
+}
+let haltArmed = null;
+$("haltBtn").addEventListener("click", () => {
+  if (!overrides.halt && !haltArmed) {   // two clicks to halt
+    $("haltBtn").textContent = "Click again to HALT";
+    haltArmed = setTimeout(() => { haltArmed = null; loadOverridesIntoTable(); }, 3000);
+    return;
+  }
+  clearTimeout(haltArmed); haltArmed = null;
+  saveOverrides({...readOverridesFromTable(), halt: !overrides.halt});
+});
+$("saveBtn").addEventListener("click", () => saveOverrides(readOverridesFromTable()));
+$("scale").addEventListener("input", () => { dirty = true; $("ovMsg").textContent = "Unsaved changes."; });
+$("arbOn").addEventListener("change", () => { dirty = true; $("ovMsg").textContent = "Unsaved changes."; });
+
+// ------------------------------------------------------------------ PnL chart
+function renderChart() {
+  const svg = $("chart"), W = svg.clientWidth || 700, H = 260, m = {l: 64, r: 132, t: 10, b: 26};
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  if (history.length < 2) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" fill="${css("--text-muted")}">PnL history appears once the market runs</text>`; return; }
+  const xs = history.map((d, i) => i);
+  const ys = history.flatMap((d) => [d.exp, d.mtm]).filter(isFinite);
+  let lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
+  if (hi - lo < 100) { hi += 50; lo -= 50; }
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const X = (i) => m.l + (i / (xs.length - 1)) * (W - m.l - m.r), Y = (v) => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const step = niceStep((hi - lo) / 5);
+  let g = "";
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 0 ? css("--text-muted") : css("--grid")}" stroke-width="1"/>` +
+      `<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="${css("--text-secondary")}">${money(v)}</text>`;
+  }
+  // round boundaries
+  history.forEach((d, i) => {
+    if (i && d.round !== history[i - 1].round)
+      g += `<line x1="${X(i)}" x2="${X(i)}" y1="${m.t}" y2="${H - m.b}" stroke="${css("--line")}" stroke-dasharray="3 3"/>`;
+    if (i === 0 || d.round !== history[i - 1].round)
+      g += `<text x="${X(i) + 4}" y="${H - 8}" font-size="11" fill="${css("--text-secondary")}">Round ${d.round}</text>`;
+  });
+  const path = (k) => history.map((d, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(d[k]).toFixed(1)}`).join("");
+  const last = history[history.length - 1];
+  const labels = [["exp", "--series-1", "Expected"], ["mtm", "--series-2", "Marked"]]
+    .map(([k, c, n]) => ({k, c, n, y: Y(last[k])})).sort((a, b) => a.y - b.y);
+  if (labels[1].y - labels[0].y < 14) labels[1].y = labels[0].y + 14;
+  g += `<path d="${path("mtm")}" fill="none" stroke="${css("--series-2")}" stroke-width="2" stroke-linejoin="round"/>` +
+       `<path d="${path("exp")}" fill="none" stroke="${css("--series-1")}" stroke-width="2" stroke-linejoin="round"/>`;
+  for (const L of labels) g += `<text x="${W - m.r + 8}" y="${L.y + 4}" font-size="11" fill="${css("--text-primary")}">${L.n} ${smoney(last[L.k])}</text>`;
+  g += `<line id="xh" y1="${m.t}" y2="${H - m.b}" stroke="${css("--text-muted")}" visibility="hidden"/>` +
+       `<circle id="d1" r="4" fill="${css("--series-1")}" stroke="${css("--surface-1")}" stroke-width="2" visibility="hidden"/>` +
+       `<circle id="d2" r="4" fill="${css("--series-2")}" stroke="${css("--surface-1")}" stroke-width="2" visibility="hidden"/>` +
+       `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" id="hit"/>`;
+  svg.innerHTML = g;
+  const tip = $("tip"), hit = svg.querySelector("#hit");
+  hit.addEventListener("mousemove", (ev) => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(history.length - 1, Math.round((px - m.l) / (W - m.l - m.r) * (history.length - 1))));
+    const d = history[i];
+    for (const [id, k] of [["xh", null], ["d1", "exp"], ["d2", "mtm"]]) {
+      const el = svg.querySelector("#" + id); el.setAttribute("visibility", "visible");
+      if (k) { el.setAttribute("cx", X(i)); el.setAttribute("cy", Y(d[k])); } else { el.setAttribute("x1", X(i)); el.setAttribute("x2", X(i)); }
+    }
+    const tt = d.t == null ? "" : ` · t=${Math.round(d.t)} s`;
+    tip.innerHTML = `<b>Round ${d.round}${tt}</b><br>Expected ${smoney(d.exp)}<br>Marked ${smoney(d.mtm)}<br><span class="muted">gross ${money(d.gross)}</span>`;
+    tip.hidden = false;
+    const tx = (X(i) / W) * r.width;
+    tip.style.left = Math.min(tx + 12, r.width - 170) + "px"; tip.style.top = "8px";
+  });
+  hit.addEventListener("mouseleave", () => { tip.hidden = true; ["xh", "d1", "d2"].forEach((id) => svg.querySelector("#" + id).setAttribute("visibility", "hidden")); });
+  $("chartNote").textContent = `Expected PnL values every position at the engine's fair value — the best estimate of the final score. ` +
+    `Marked PnL uses the exchange's marks and can swing far from it mid-season.`;
+}
+function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const f = x / p; return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p; }
+
+// ------------------------------------------------------------------ storm map
+function renderMap(s) {
+  if (!caseData) return;
+  const svg = $("map"); let g = `<rect width="1000" height="700" fill="${css("--sea")}"/>`;
+  for (const [k, isl] of Object.entries(caseData.islands)) {
+    g += `<polygon points="${isl.polygon.map((p) => p.join(",")).join(" ")}" fill="${css("--island")}" stroke="${css("--island-line")}" stroke-width="2"/>`;
+    const cx = isl.polygon.reduce((a, p) => a + p[0], 0) / isl.polygon.length, by = Math.max(...isl.polygon.map((p) => p[1]));
+    g += `<text x="${cx}" y="${by + 26}" text-anchor="middle" font-size="22" fill="${css("--text-secondary")}">${esc(isl.name)}</text>`;
+  }
+  for (const [sym, c] of Object.entries(caseData.companies))
+    for (const site of c.sites)
+      g += `<circle cx="${site.x}" cy="${site.y}" r="${5 + 9 * site.weight}" fill="${css("--surface-1")}" stroke="${css("--text-secondary")}" stroke-width="2"><title>${sym} · ${esc(site.name)} (weight ${site.weight})</title></circle>`;
+  const st = s && !s.missing ? s.storm || {} : {};
+  if (st.track && st.track.length) {
+    const pts = st.track.map((p) => `${p[1]},${p[2]}`).join(" ");
+    g += `<polyline points="${pts}" fill="none" stroke="${css("--storm")}" stroke-width="3" stroke-linejoin="round" opacity="0.85"/>`;
+    for (const c of st.cone || [])
+      g += `<circle cx="${c[1]}" cy="${c[2]}" r="${c[3]}" fill="none" stroke="${css("--storm")}" stroke-dasharray="6 6" stroke-width="2" opacity="0.6"><title>forecast cone, age ${c[0]} s</title></circle>`;
+    const o = st.obs;
+    if (o && !st.dissipated) {
+      g += `<circle cx="${o.x}" cy="${o.y}" r="${o.radius}" fill="${css("--storm")}" fill-opacity="0.14" stroke="${css("--storm")}" stroke-width="2"/>` +
+           `<circle cx="${o.x}" cy="${o.y}" r="9" fill="${css("--storm")}" stroke="${css("--surface-1")}" stroke-width="3"/>`;
+    }
+  }
+  svg.innerHTML = g;
+  const post = st.posterior ? Object.entries(st.posterior).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([k, v]) => `${k} ${(100 * v).toFixed(0)}%`).join(", ") : "";
+  $("stormTitle").textContent = st.name ? `Storm ${st.name} (round ${st.round})` : "Storm";
+  $("stormNote").textContent = !st.name ? "No storm data yet." :
+    [st.obs && `age ${Math.round(st.obs.age)} s, radius ${Math.round(st.obs.radius)}, intensity ${num(st.obs.intensity)}`,
+     st.dissipated && "dissipated", st.outlook && `official outlook: ${st.outlook}`, post && `pattern belief: ${post}`,
+     "dashed circles = official forecast cone"].filter(Boolean).join(" · ");
+}
+
+// ------------------------------------------------------------------ orders + log
+function renderOrders(s) {
+  if (!s || s.missing) return;
+  $("ordTbl").querySelector("tbody").innerHTML = (s.orders || []).slice(0, 25).map((o) =>
+    `<tr><td class="l muted">${esc((o.clock || "").slice(11))}</td><td class="l ${o.side === "buy" ? "pos-text" : "neg-text"}">${o.side === "buy" ? "▲ buy" : "▼ sell"}</td>
+     <td class="l"><b>${o.sym}</b></td><td>${o.qty}</td><td>${num(o.price)}</td><td>${num(o.mid)}</td><td>${num(o.fair)}</td><td>${money(o.edge)}</td></tr>`).join("") ||
+    `<tr><td class="l muted" colspan="8">No orders yet.</td></tr>`;
+}
+async function pollLog() {
+  try {
+    const j = await get("/api/log");
+    $("logTitle").textContent = j.file ? `Log · ${j.file}` : "Log";
+    const el = $("log"), atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+    el.textContent = j.lines.join("\n");
+    if (atBottom) el.scrollTop = el.scrollHeight;
+  } catch (e) {}
+}
+
+// ------------------------------------------------------------------ ETF arb panel
+function renderArb(a) {
+  const pill = $("arbPill");
+  let lvl, label;
+  if (!a || a.missing) { lvl = "warning"; label = "⏸ not running"; }
+  else if (a.age > 10) { lvl = "critical"; label = `✕ not updating (${ago(a.age)})`; }
+  else if (a.halted) { lvl = "critical"; label = "■ halted"; }
+  else if (a.state && a.state !== "running") { lvl = "warning"; label = `⏸ ${a.state}`; }
+  else { lvl = "good"; label = a.dry_run ? "✓ watching (dry run)" : "✓ running"; }
+  pill.innerHTML = `<span class="dot" style="background:var(--${lvl})"></span><span>${esc(label)}</span>`;
+  if (!a || a.missing) { $("aProfit").textContent = "—"; return; }
+  const st = a.stats || {};
+  $("aProfit").textContent = smoney(st.est_profit);
+  $("aProfitSub").textContent = `${st.arbs || 0} arbitrages · ${st.units || 0} units · margin ${(100 * a.min_edge).toFixed(2)}% of basket`;
+  for (const e of ["ARCH", "REBLD"]) {
+    const g = (a.gaps || {})[e];
+    if (!g) { $("aGap" + e).textContent = "—"; $("aGap" + e + "sub").textContent = "no quotes yet"; continue; }
+    const best = g.rich >= g.cheap ? ["rich", g.rich, g.rich_pct] : ["cheap", g.cheap, g.cheap_pct];
+    const over = best[2] > 100 * a.min_edge;
+    $("aGap" + e).innerHTML = `<span class="${over ? "pos-text" : ""}">${best[1] >= 0 ? "+" : "−"}$${Math.abs(best[1]).toFixed(2)}</span>`;
+    $("aGap" + e + "sub").textContent = best[1] <= 0
+      ? `no arbitrage: the best side loses ${Math.abs(best[2]).toFixed(2)}% after spreads (margin ${(100 * a.min_edge).toFixed(2)}%)`
+      : `ETF ${best[0]} by ${best[2].toFixed(2)}% vs margin ${(100 * a.min_edge).toFixed(2)}%${over ? " — tradable" : ""}`;
+  }
+  const pend = Object.entries(a.pending || {}).filter(([, v]) => v);
+  $("aHealth").textContent = pend.length ? `⚠ ${pend.map(([k, v]) => `${k} ${v}`).join(", ")} pending` : "✓ flat";
+  $("aHealthSub").textContent = `unwind orders ${st.unwinds || 0} · refused conversions ${st.refused || 0} · lock waits ${st.skipped_lock || 0}` +
+    ` · actions left ${(a.budget || {}).left ?? "—"}/${(a.budget || {}).limit ?? "—"}`;
+  $("arbTbl").querySelector("tbody").innerHTML = (a.recent || []).map((r) =>
+    `<tr><td class="l muted">${new Date(r.ts * 1000).toLocaleTimeString()}</td><td class="l"><b>${r.etf}</b></td>
+     <td class="l">${r.dir === "rich" ? "sell ETF · buy basket · create" : "buy ETF · sell basket · redeem"}${r.dry ? " (dry)" : ""}</td>
+     <td>${r.units}</td><td>${r.matched}</td><td>${money(r.est, 2)}</td></tr>`).join("") ||
+    `<tr><td class="l muted" colspan="6">No arbitrages yet.</td></tr>`;
+}
+async function pollArb() { try { renderArb(await get("/api/arb")); } catch (e) {} }
+
+// ------------------------------------------------------------------ loops
+async function pollStatus() {
+  try { status = await get("/api/status"); } catch (e) { status = {missing: true}; $("banner").style.display = "block"; $("banner").textContent = "✕ Dashboard server not reachable"; return; }
+  renderHeader(status); renderTiles(status); renderPositions(status); renderMap(status); renderOrders(status);
+}
+async function pollHistory() { try { history = await get("/api/history"); renderChart(); } catch (e) {} }
+async function init() {
+  buildPosTable();
+  try { caseData = await get("/api/case"); } catch (e) {}
+  try { overrides = await get("/api/overrides"); } catch (e) {}
+  loadOverridesIntoTable();
+  await pollStatus(); await pollHistory(); await pollLog(); await pollArb();
+  setInterval(pollArb, 1000);
+  setInterval(pollStatus, 1000); setInterval(pollHistory, 3000); setInterval(pollLog, 3000);
+  setInterval(async () => { if (!dirty) { try { overrides = await get("/api/overrides"); loadOverridesIntoTable(); } catch (e) {} } }, 5000);
+  window.addEventListener("resize", renderChart);
+  new MutationObserver(() => { renderChart(); renderMap(status); }).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { renderChart(); renderMap(status); });
+}
+init();
+})();
+</script>
+</body>
+</html>

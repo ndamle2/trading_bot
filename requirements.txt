@@ -1,0 +1,7 @@
+certifi==2026.10.23
+matplotlib==3.11.2
+numpy==2.5.4
+pandas==3.1.0
+scikit-learn==1.9.1
+scipy==1.18.1
+websockets==17.3

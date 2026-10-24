@@ -1,0 +1,13 @@
+{
+ "min_edge": 0.004,
+ "every": 2,
+ "latency": 2,
+ "actions_per_min": 45,
+ "refill": 0.066,
+ "lag": 4,
+ "share": 0.3,
+ "push": 0.3,
+ "rival_edge": 0.001,
+ "noise": 0.0,
+ "max_units": 0
+}
