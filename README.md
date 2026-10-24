@@ -1,5 +1,7 @@
 # Hurricane Season — trading comp workspace
 
+**Running it in the competition: see [RUNBOOK.md](RUNBOOK.md).**
+
 Setup: `.venv/` (Python 3.12) has `websockets numpy pandas scipy scikit-learn matplotlib certifi`.
 Run everything with `.venv/bin/python`.
 

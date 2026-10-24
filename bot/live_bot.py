@@ -102,6 +102,7 @@ class LiveBot:
         self.last_msg_time = None
         self.overrides = {}
         self.seen_rounds: set = set()
+        self.seen_headlines: set = set()
         self.pos_rows: dict[str, dict] = {}
         self.recent_orders: deque = deque(maxlen=60)
         self.cycle_ms = None
@@ -194,8 +195,11 @@ class LiveBot:
         t = m.get("type")
         if t not in KNOWN:
             log(f"*** NEWS / ANNOUNCEMENT ({t}): {m.get('headline', m)}  -> consider editing overrides.json")
+        if m.get("headline"):
+            self.seen_headlines.add(m["headline"])
         if t == "snapshot":
             self.backfill(m)
+            self.recover_from_snapshot(m)
             return
         if t in ("storm", "advisory", "damage_report", "storm_dissipated", "storm_formed", "impact", "track"):
             with self.state_file.open("a") as f:
@@ -228,6 +232,32 @@ class LiveBot:
         self.fv.storm.obs.sort(key=lambda o: o[0])
         self.fv._cache = None
         log(f"backfilled {len(pts)} track points of round {rnd} from a snapshot (intensity approximated)")
+
+    def recover_from_snapshot(self, snap: dict):
+        """Snapshots (on connect and every 30 s) carry the round's damage reports and headlines: replay any damage
+        report we missed (e.g. during a network drop) and print headlines we have not seen (announcements)."""
+        rnd = snap.get("round")
+        for item in snap.get("damage") or []:
+            try:
+                if not isinstance(item, dict) or "damage_pct" not in item:
+                    continue
+                msg = {**item, "type": "damage_report", "round": item.get("round", rnd),
+                       "storm": item.get("storm", snap.get("storm")), "stage": item.get("stage", "final")}
+                if msg["round"] != self.fv.round:
+                    continue
+                st = self.fv.storm
+                missing = (msg["stage"] == "final" and st.final is None and "industry_loss_musd" in msg) or \
+                          (msg["stage"] == "preliminary" and st.prelim is None and st.final is None)
+                if missing:
+                    log(f"recovered a missed {msg['stage']} damage report of round {msg['round']} from a snapshot")
+                    self.on_news(msg)
+            except Exception:  # never let a malformed snapshot stop the bot
+                log("snapshot damage item not understood:", str(item)[:200])
+        for h in snap.get("headlines") or []:
+            text = h.get("headline") or h.get("text") or json.dumps(h) if isinstance(h, dict) else str(h)
+            if text and text not in self.seen_headlines:
+                self.seen_headlines.add(text)
+                log(f"*** HEADLINE: {text}  -> if it changes a company's economics, adjust it on the dashboard")
 
     # ------------------------------------------------------------ trading
     def poke(self):
