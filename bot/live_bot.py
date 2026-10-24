@@ -21,7 +21,9 @@ Overrides (bot/overrides.json, re-read every cycle; edit it while the bot runs t
   {"halt": false,                                   # true: cancel all orders, trade nothing
    "scale": 1.0,                                    # multiplies --scale
    "symbols": {"HAVEN": {"mult": 1.0, "add": 0.0,   # fair value -> value * mult + add (ETFs follow)
-                         "disable": false}}}         # stop trading one symbol
+                         "params": {"attach": 500},  # replace valuation-formula parameters (see engine/model.py)
+                         "disable": false},          # stop trading one symbol
+               "_loss_coef": {"params": {"coef": [9, 6, 2.5, 7, 1.2]}}}}   # insured $M per damage point
 """
 
 from __future__ import annotations
@@ -270,7 +272,7 @@ class LiveBot:
         except json.JSONDecodeError as e:
             log("overrides.json is not valid JSON, ignoring:", e)
         self.fv.val.overrides = {k: v for k, v in self.overrides.get("symbols", {}).items()
-                                 if "mult" in v or "add" in v}
+                                 if "mult" in v or "add" in v or "params" in v}
         self.fv._cache = None
 
     def parse_positions(self, resp):

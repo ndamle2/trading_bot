@@ -13,6 +13,7 @@
 #                                The main bot keeps trading ARCH/REBLD on fair value (best in the replay backtest);
 #                                add --arb-owns-etfs to give the ETFs to the arb bot only (main gets --skip-symbols).
 #                                --arb-dry-run runs the arb bot in dry-run mode.
+#   --no-dashboard               do not start the dashboard
 # The dashboard (bot/dashboard.py) starts automatically with the bot and is stopped by `stop`.
 #
 # Needs trading_comp/.env with HURRICANE_API_KEY=... and the venv in trading_comp/.venv.
@@ -77,6 +78,7 @@ if pid=$(running_pid); then echo "bot already running (pid $pid). Use './run_bot
 BACKGROUND=0
 SCRIPT=live_bot.py
 WITH_ARB=0
+NO_DASH=0
 ARB_BUDGET=50
 ARB_OWNS_ETFS=0
 ARB_ARGS=()
@@ -90,6 +92,7 @@ while [[ $# -gt 0 ]]; do
     --arb-owns-etfs) ARB_OWNS_ETFS=1 ;;
     --main-trades-etfs) ARB_OWNS_ETFS=0 ;;
     --arb-dry-run) ARB_ARGS+=(--dry-run) ;;
+    --no-dashboard) NO_DASH=1 ;;
     *) ARGS+=("$1") ;;
   esac
   shift
@@ -123,7 +126,7 @@ supervise() {
   done
 }
 
-start_dashboard
+[[ $NO_DASH -eq 1 ]] || start_dashboard
 if [[ $WITH_ARB -eq 1 ]]; then
   supervise etf_arb_bot.py ${ARB_ARGS[@]+"${ARB_ARGS[@]}"} >>"$ARB_LOG" 2>&1 &
   echo $! >"$PIDFILE.arb"

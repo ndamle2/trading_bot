@@ -76,24 +76,30 @@ class Valuation:
         self.loss_coef = np.asarray(p["loss_coef"])
         self.overrides = overrides or {}
 
+    def q(self, c):
+        """Valuation parameters of symbol c, with any announcement override {"params": {...}} applied."""
+        o = self.overrides.get(c, {}).get("params")
+        return {**self.v[c], **o} if o else self.v[c]
+
     def loss(self, Dpct):
-        return Dpct @ self.loss_coef
+        lc = self.overrides.get("_loss_coef")   # announcement changing the insured-loss mix: [PORT, ISLE, AQUA, GRID, FERRY]
+        return Dpct @ (np.asarray(lc["params"]["coef"]) if lc else self.loss_coef)
 
     def __call__(self, Dpct, Cw) -> dict[str, np.ndarray]:
         """Settlement per symbol. Dpct: season damage pct [..., 5]; Cw: weighted closure/100 [..., 5]."""
         D = Dpct / 100
         out = {}
         for j, c in enumerate(PHYSICAL):
-            c0, c1, c2, c3, c4 = self.v[c]["coef"]
+            c0, c1, c2, c3, c4 = self.q(c)["coef"]
             out[c] = c0 + c1 * D[..., j] + c2 * D[..., j] ** 2 + c3 * Cw[..., j] + c4 * Cw[..., j] ** 2
         L = self.loss(Dpct)
         for c in ("HAVEN", "REIN"):
-            q = self.v[c]
+            q = self.q(c)
             frac = np.clip((L - q["attach"]) / (q["exhaust"] - q["attach"]), 0, 1)
             out[c] = q["top"] - (q["top"] - q["bottom"]) * frac
         X = np.concatenate([D, Cw[..., [0, 3, 4]]], axis=-1)
         for c in ("RECON", "MAT", "GEN"):
-            q = self.v[c]
+            q = self.q(c)
             out[c] = q["base"] + q["a"] * np.power(np.maximum(X @ np.asarray(q["w"]), 0) + 1e-9, q["power"])
         for c, o in self.overrides.items():  # manual adjustments for announcements: value*mult + add
             if c in out:
